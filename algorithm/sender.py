@@ -1,10 +1,9 @@
-import random
 import threading
-import time
 
 import log
+from clock import set_send_request_clock
 from communication import send_request_to_all
-from critical_section import set_want_to_enter_cs
+from critical_section import set_want_to_enter_cs, get_want_to_enter_cs
 
 lock = threading.Lock()
 
@@ -16,6 +15,8 @@ def trying_to_get_into_CS(rank):
 
 def sender(comm, rank, number_of_tourists):
     """Wątek wysyłający."""
-    time.sleep(random.randint(0, 2))
-    trying_to_get_into_CS(rank)
-    send_request_to_all(comm, rank, number_of_tourists)
+    while True:
+        if not get_want_to_enter_cs():
+            trying_to_get_into_CS(rank)
+            send_request_to_all(comm, rank, number_of_tourists)
+            set_send_request_clock(rank)

@@ -17,14 +17,14 @@ def get_trip_started():
 def start_trip(squat, thread_number):
     global trip_started
     with lock:
-        log.info(f'Trip start: {str(squat)}', thread_number)
+        log.info(f'Trip started with {str(squat)} processes', thread_number)
         trip_started = True
 
 
-def end_trip(thread_number):
+def end_trip(squat, thread_number):
     global trip_started
     with lock:
-        log.info('Trip ended', thread_number)
+        log.info(f'Trip ended with {str(squat)} processes', thread_number)
         trip_started = False
 
 

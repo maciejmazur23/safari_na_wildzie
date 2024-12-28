@@ -5,6 +5,19 @@ import log
 logical_clock = 0
 lock = threading.Lock()
 
+send_request_clock = 0
+
+
+def get_send_request_clock():
+    return send_request_clock
+
+
+def set_send_request_clock(rank):
+    global logical_clock, send_request_clock
+    with lock:
+        log.info(f"Set send_request_clock as {logical_clock}", rank)
+        send_request_clock = logical_clock
+
 
 def increment_clock(rank, clock=0):
     """Inkrementuje zegar logiczny."""
