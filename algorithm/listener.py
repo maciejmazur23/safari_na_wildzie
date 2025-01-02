@@ -12,6 +12,9 @@ def listener(comm, rank, number_of_tourists, group_number, group_size):
     trip_squat = []
     acquires_send = False
     need_more_accepts = False
+    accept_send = False
+    accept_send_id = -1
+
     while True:
         for i in range(number_of_tourists):
             if comm.Iprobe(source=i):
@@ -30,13 +33,14 @@ def listener(comm, rank, number_of_tourists, group_number, group_size):
                         requesters = process_request(i, requesters, comm, rank, sender_clock)
 
                 if message.startswith("REPLAY"):
-                    received_replays = process_replay_message(i, rank, received_replays)
+                    received_replays, accept_send = process_replay_message(i, rank, received_replays, accept_send,
+                                                                           accept_send_id)
                     acquires_send, requesters = try_enter_cs(acquires_send, comm, group_number, group_size,
                                                              number_of_tourists, rank, received_replays,
                                                              requesters)
 
                 if message.startswith("ACQUIRE"):
-                    process_acquire(comm, rank, i)
+                    accept_send, accept_send_id = process_acquire(comm, rank, i, accept_send, accept_send_id)
 
                 if message.startswith("ACCEPT") and acquires_send:
                     trip_processed = process_accept(trip_squat, rank, i, group_size, comm, number_of_tourists)
@@ -48,7 +52,7 @@ def listener(comm, rank, number_of_tourists, group_number, group_size):
                         need_more_accepts = False
 
                 if message.startswith("REJECT") and acquires_send:
-                    requesters = process_reject(requesters, comm, rank)
+                    requesters, need_more_accepts = process_reject(requesters, comm, rank)
 
                 # if message.startswith("RELEASE"):
                 #     log.info(f"Before process release {requesters} | {received_replays}", rank)
@@ -106,28 +110,36 @@ def try_enter_cs(acquires_send, comm, P, G, T, rank, received_replays, requester
     return acquires_send, requesters
 
 
-def process_replay_message(i, rank, received_replays):
-    received_replays.append(i)
+def process_replay_message(i, rank, received_replays, accept_send, accept_send_id):
+    if accept_send and accept_send_id == i:
+        accept_send = False
+
+    if i not in received_replays:
+        received_replays.append(i)
     log.info(f"[{get_logical_clock()}] P_{rank} received REPLAY from P_{i}. Total replays: {received_replays}", rank)
-    return received_replays
+    return received_replays, accept_send
 
 
 def process_request(i, requesters, comm, rank, sender_clock):
     requesters.append((i, sender_clock))
-    log.info(f"Clock: {get_send_request_clock()} Sender clock: {sender_clock}", rank)
-    if not get_want_to_enter_cs() or get_send_request_clock() == 0:
+    request_clock = get_send_request_clock()
+    log.info(f"Clock: {request_clock} Sender clock: {sender_clock}", rank)
+    if not get_want_to_enter_cs() or request_clock == 0:
         send_replay(comm, rank, i)
-    elif sender_clock < get_send_request_clock() or (sender_clock == get_send_request_clock() and i < rank):
+    elif sender_clock < request_clock or (sender_clock == request_clock and i < rank):
         send_replay(comm, rank, i)
     return requesters
 
 
-def process_acquire(comm, rank, p_i):
-    if not get_enter_cs() and get_want_to_enter_cs():
+def process_acquire(comm, rank, p_i, accept_send, accept_send_id):
+    if not get_enter_cs() and get_want_to_enter_cs() and not accept_send:
         send_accept(comm, rank, p_i)
-        # enter_critical_section(rank)
+        accept_send = True
+        accept_send_id = p_i
     else:
         send_reject(comm, rank, p_i)
+
+    return accept_send, accept_send_id
 
 
 def process_accept(trip_squat, rank, p_i, group_size, comm, number_of_tourists):
@@ -166,4 +178,5 @@ def process_reject(requesters, comm, rank):
     if len(requesters) > 0:
         elem = requesters.pop(0)
         send_acquire(comm, rank, elem[0])
-    return requesters
+        return requesters, False
+    return requesters, True

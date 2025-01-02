@@ -1,7 +1,6 @@
 import threading
 
 import log
-from clock import set_send_request_clock
 from communication import send_request_to_all
 from critical_section import set_want_to_enter_cs, get_want_to_enter_cs
 
@@ -19,4 +18,3 @@ def sender(comm, rank, number_of_tourists):
         if not get_want_to_enter_cs():
             trying_to_get_into_CS(rank)
             send_request_to_all(comm, rank, number_of_tourists)
-            set_send_request_clock(rank)

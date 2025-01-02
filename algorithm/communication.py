@@ -1,15 +1,17 @@
 import log
-from clock import increment_clock, get_logical_clock, set_send_request_clock, lock
+from clock import increment_clock, get_logical_clock, set_send_request_clock, lock, get_send_request_clock
 
 
 def send_request_to_all(comm, rank, number_of_tourists):
     """Wysyła żądanie do wszystkich innych procesów z zegarem logicznym."""
     message = f"REQUEST {rank}"
     increment_clock(rank)
+    set_send_request_clock(rank)
+    request_clock = get_send_request_clock()
     for i in range(number_of_tourists):
         if i != rank:
-            log.info(f"[{get_logical_clock()}] P_{rank} '{message}' -> P_{i}", rank)
-            comm.send((message, get_logical_clock()), dest=i)
+            log.info(f"[{request_clock}] P_{rank} '{message}' -> P_{i}", rank)
+            comm.send((message, request_clock), dest=i)
 
 
 def send_request(comm, rank, p_i):

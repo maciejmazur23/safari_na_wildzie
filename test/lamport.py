@@ -1,9 +1,10 @@
-import queue
 import random
 import threading
 import time
 
 from mpi4py import MPI
+
+import log
 
 logical_clock = 0
 want_to_get_into_CS = False
@@ -21,7 +22,7 @@ def init_comm():
 def enter_critical_section(rank):
     """Symulacja wejścia do sekcji krytycznej."""
     with lock:
-        print(f"P_{rank} Wchodzi do sekcji krytycznej! Clock:[{logical_clock}]")
+        log.info(f"P_{rank} Wchodzi do sekcji krytycznej! Clock:[{logical_clock}]", rank)
         with open("../log/cs.txt", "a") as plik:
             plik.write(str(rank))
 
@@ -29,10 +30,10 @@ def enter_critical_section(rank):
 def send_request_to_all(comm, rank, size):
     """Wysyła żądanie do wszystkich innych procesów z zegarem logicznym."""
     message = f"REQUEST {rank}"
-    increment_clock()
+    # increment_clock()
     for i in range(size):
         if i != rank:
-            print(f"P_{rank} '{message}' -> P_{i} Clock:[{logical_clock}]")
+            log.info(f"P_{rank} '{message}' -> P_{i} Clock:[{logical_clock}]", rank)
             comm.send((message, logical_clock), dest=i)
 
 
@@ -41,7 +42,7 @@ def send_replay(comm, rank, p_i):
 
     message = f"REPLAY {rank}"
 
-    print(f"P_{rank} '{message}' -> P_{p_i} Clock:[{logical_clock}]")
+    log.info(f"P_{rank} '{message}' -> P_{p_i} Clock:[{logical_clock}]", rank)
 
     comm.send((message, logical_clock), dest=p_i)
 
@@ -49,18 +50,18 @@ def send_replay(comm, rank, p_i):
 def increment_clock(clock=0):
     global logical_clock
     with lock:
-        print(f"P_{rank} Clock:[{logical_clock}] before")
+        log.info(f"P_{rank} Clock:[{logical_clock}] before", rank)
         if clock == 0:
             logical_clock += 1
         else:
             logical_clock = clock
-        print(f"P_{rank} Clock:[{logical_clock}] after")
+        log.info(f"P_{rank} Clock:[{logical_clock}] after", rank)
 
 
 def trying_to_get_into_CS():
     global logical_clock, want_to_get_into_CS
     with lock:
-        print(f"P_{rank} trying_to_get_into_CS")
+        log.info(f"P_{rank} trying_to_get_into_CS", rank)
         want_to_get_into_CS = True
 
 
@@ -70,7 +71,7 @@ def replay_all(comm, rank, size):
     increment_clock()
     for i in range(size):
         if i != rank:
-            print(f"P_{rank} '{message}' -> P_{i} Clock:[{logical_clock}]")
+            log.info(f"P_{rank} '{message}' -> P_{i} Clock:[{logical_clock}]", rank)
             comm.send((message, logical_clock), dest=i)
 
 
@@ -78,33 +79,39 @@ def listener():
     """Wątek nasłuchujący, który odbiera i wyświetla wiadomości oraz odczytuje współdzieloną zmienną."""
     global logical_clock
     received_replays = 0
+    logical_clock = 0
     while True:
         for i in range(size):
             if i != rank:
                 message, sender_clock = comm.recv(source=i)
                 # received_replays += 1
                 with lock:
-                    print(f"P_{rank} odebral '{message}' | My Clock:[{logical_clock}] Sender Clock: [{sender_clock}]")
-                    logical_clock = max(logical_clock, sender_clock) + 1
-                    print(f"P_{rank} Result clock:[{logical_clock}]")
+                    log.info(
+                        f"P_{rank} odebral '{message}' | My Clock:[{logical_clock}] Sender Clock: [{sender_clock}]",
+                        rank)
+                    # logical_clock = max(logical_clock, sender_clock) + 1
+                    log.info(f"P_{rank} Result clock:[{logical_clock}]", rank)
 
                 if message == f"REQUEST {i}":
                     if not want_to_get_into_CS:
                         send_replay(comm, rank, i)
-                    elif i > rank:
+                    elif (logical_clock > sender_clock) or (logical_clock == sender_clock and i < rank):
                         send_replay(comm, rank, i)
                 elif message == f"REPLAY {i}":
                     received_replays += 1
-                    print(f"P_{rank} received REPLAY from P_{i}| Replays: [{received_replays}]")
+                    log.info(f"P_{rank} received REPLAY from P_{i}| Replays: [{received_replays}]", rank)
 
         if received_replays == size - 1:
             enter_critical_section(rank)
             replay_all(comm, rank, size)
-            break
+            received_replays = 0
+            send_request_to_all(comm, rank, size)
 
 
 def sender():
     """Wątek wysyłający wiadomości i modyfikujący współdzieloną zmienną."""
+    log.reset(rank)
+    log.reset_cs()
     time.sleep(random.randint(0, 2))
     trying_to_get_into_CS()
     send_request_to_all(comm, rank, size)
@@ -120,4 +127,3 @@ sender_thread.start()
 
 sender_thread.join()
 listener_thread.join()
-print()
