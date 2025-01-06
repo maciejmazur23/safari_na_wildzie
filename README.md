@@ -10,7 +10,7 @@ mpiexec -n x python .\main.py
 gdzie x to liczba procesów.
 
 ### Wersja c++
-Aby odpalić kod należy przejść do folderu algorithm i wywołać komendę:
+Aby odpalić kod należy przejść do folderu c++ i wywołać komendę:
 
 **Kompilacja:**
 ```commandline
