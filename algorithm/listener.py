@@ -1,6 +1,6 @@
 import log
 from clock import increase_local_clock_after_received_message, get_logical_clock, get_send_request_clock
-from communication import send_replay, send_acquire, send_accept, send_reject, send_request, replay_all
+from communication import send_replay, send_acquire, send_accept, send_reject, replay_all
 from critical_section import enter_critical_section, get_want_to_enter_cs, get_enter_cs, start_trip, end_trip, \
     out_critical_section, set_want_to_enter_cs
 
@@ -23,12 +23,13 @@ def listener(comm, rank, number_of_tourists, group_number, group_size):
                 increase_local_clock_after_received_message(message, sender_clock, rank)
 
                 if message.startswith("REQUEST"):
+                    requesters.append((i, sender_clock))
                     if get_enter_cs():
-                        requesters.append((i, sender_clock))
                         if get_enter_cs() and not acquires_send:
                             acquires_send, requesters = send_acquire_to_group(requesters, comm, rank, group_size)
                         if get_enter_cs() and need_more_accepts:
-                            acquires_send, requesters = send_acquire_to_group(requesters, comm, rank, group_size)
+                            send_acquire(comm, rank, requesters.pop(0)[0])
+                            # acquires_send, requesters = send_acquire_to_group(requesters, comm, rank, group_size)
                     else:
                         requesters = process_request(i, requesters, comm, rank, sender_clock)
 
@@ -54,52 +55,6 @@ def listener(comm, rank, number_of_tourists, group_number, group_size):
                 if message.startswith("REJECT") and acquires_send:
                     requesters, need_more_accepts = process_reject(requesters, comm, rank)
 
-                # if message.startswith("RELEASE"):
-                #     log.info(f"Before process release {requesters} | {received_replays}", rank)
-                #     requesters, trip_squat, received_replays, acquires_send, need_more_accepts = process_release(
-                #         requesters, comm, rank, message, trip_squat, received_replays,
-                #         acquires_send, need_more_accepts, i)
-                #     log.info(f"After process release {requesters} | {received_replays}", rank)
-
-
-def process_release(requesters, comm, rank, message, trip_squat, received_replays, acquires_send, need_more_accepts,
-                    sender_id):
-    start = message.find('[')
-    end = message.find(']')
-    if start != -1 and end != -1:
-        substring = message[start + 1:end]
-
-        numbers = substring.split(', ')
-
-        if rank in numbers:
-            log.info("number == rank", rank)
-            set_want_to_enter_cs(False)
-            out_critical_section(rank)
-            requesters = []
-            trip_squat = []
-            received_replays = []
-            acquires_send = False
-            need_more_accepts = False
-
-        for number in numbers:
-            new_requesters = []
-            for i, item in enumerate(requesters):
-                log.info(f"item: {item} {number} {(int(item[0]) == int(number))}", rank)
-                if not ((int(item[0]) == int(number)) or sender_id == int(item[0])):
-                    new_requesters.append(item)
-                    log.info(f"if {number} new_requesters: {new_requesters}", rank)
-                else:
-                    log.info(f"else {number}", rank)
-                    if item[0] in received_replays:
-                        received_replays.remove(item[0])
-                    send_request(comm, rank, item[0])
-
-                requesters = new_requesters
-    else:
-        print("Brak nawiasów [] w ciągu!")
-
-    return requesters, trip_squat, received_replays, acquires_send, need_more_accepts
-
 
 def try_enter_cs(acquires_send, comm, P, G, T, rank, received_replays, requesters):
     if not get_enter_cs() and len(received_replays) == (T - min(P, int(T / G))):
@@ -121,7 +76,6 @@ def process_replay_message(i, rank, received_replays, accept_send, accept_send_i
 
 
 def process_request(i, requesters, comm, rank, sender_clock):
-    requesters.append((i, sender_clock))
     request_clock = get_send_request_clock()
     log.info(f"Clock: {request_clock} Sender clock: {sender_clock}", rank)
     if not get_want_to_enter_cs() or request_clock == 0:
@@ -153,7 +107,6 @@ def process_accept(trip_squat, rank, p_i, group_size, comm, number_of_tourists):
 
 def process_trip(rank, trip_squat, comm, number_of_tourists):
     start_trip(trip_squat, rank)
-    # time.sleep(2)
     end_trip(trip_squat, rank)
     replay_all(comm, rank, number_of_tourists)
     out_critical_section(rank)

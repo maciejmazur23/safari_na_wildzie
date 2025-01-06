@@ -5,7 +5,7 @@ from listener import listener
 from mpi_init import init_comm
 from sender import sender
 
-group_size = 3
+group_size = 5
 group_number = 2
 
 
