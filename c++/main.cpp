@@ -5,7 +5,12 @@
 #include "listener.h"  // Implementacja nasłuchiwania
 
 int main(int argc, char** argv) {
-    MPI_Init(&argc, &argv);
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+
+    if (provided < MPI_THREAD_MULTIPLE) {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     int rank, size;
     pthread_t sender_thread_id, listener_thread_id;
@@ -24,20 +29,25 @@ int main(int argc, char** argv) {
     data.rank = rank;
     data.size = size;
     data.group_size = 2;  // Przykładowa wartość
-    data.group_number = 1;  // Przykładowa wartość
+    data.group_number = 2;  // Przykładowa wartość
     data.want_enter_cs = &want_enter_cs;
     data.logical_clock = &logical_clock;
     data.request_clock = &request_clock;
     data.mutex = &mutex;
 
     // Tworzenie wątków
-    pthread_create(&sender_thread_id, NULL, sender_function, (void*)&data);
-    pthread_create(&listener_thread_id, NULL, listener_function, (void*)&data);
+    if (pthread_create(&sender_thread_id, NULL, sender_function, (void*)&data) != 0) {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    if (pthread_create(&listener_thread_id, NULL, listener_function, (void*)&data) != 0) {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     // Czekamy na zakończenie wątków
     pthread_join(sender_thread_id, NULL);
     pthread_join(listener_thread_id, NULL);
 
+    // Sprzątanie
     pthread_mutex_destroy(&mutex);
     MPI_Finalize();
 

@@ -5,8 +5,19 @@
 #include "message.h"
 #include "communication.h"  // Dołącz plik nagłówkowy
 
+
 void send_to_all(thread_data_t *data, const char* message, int clock)
 {
+    if (data == NULL) {
+        fprintf(stderr, "Error: data pointer is NULL\n");
+        return;
+    }
+
+    if (message == NULL || message[0] == '\0') {
+        fprintf(stderr, "Error: message is NULL or empty\n");
+        return;
+    }
+
     custom_message_t message_send;
     clock = increment_local_clock(data, clock);
 
@@ -18,7 +29,14 @@ void send_to_all(thread_data_t *data, const char* message, int clock)
     {
         if (i != data->rank)
         {
-            MPI_Send(&message_send, sizeof(custom_message_t), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+            int mpi_err = MPI_Send(&message_send, sizeof(custom_message_t), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+            if (mpi_err != MPI_SUCCESS) {
+                char error_string[256];
+                int length_of_error_string;
+                MPI_Error_string(mpi_err, error_string, &length_of_error_string);
+                fprintf(stderr, "MPI_Send failed: %s\n", error_string);
+            }
+
             printf("Proces %d (Sender): Wysłałem wiadomość \"%s\" do %d, Zegar: %d\n",
                    data->rank, message_send.message, i, message_send.clock);
         }

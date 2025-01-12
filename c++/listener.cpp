@@ -5,12 +5,24 @@
 #include <pthread.h>
 #include "message.h"
 #include "trip_data.h"
+#include <cstring>
 #include "communication.h"
 #include <vector>
 #include <tuple>
 #include <algorithm> // Dla sortowania
+#include <random>
 
 void update_local_clock(thread_data_t *data, int received_clock);
+
+
+int generateRandomNumber(int lower, int upper) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    
+    std::uniform_int_distribution<> dis(lower, upper);
+    
+    return dis(gen);
+}
 
 void *listener_function(void *arg)
 {
@@ -28,10 +40,21 @@ void *listener_function(void *arg)
     bool trip_processed = false;
     bool accept_send = false;
     int accept_send_id = -1;
-    int flag = 0;
-
+    int flag = 0; // czy jest wiadomosc
+    int isBeet = 0;
+    int partner;
     while (1)
     {
+
+        if(isBeet > 0) {
+            if(isBeet % 10 == 0) {
+                printf("Proces %d (Listener): Jestem pobity \n" , data->rank);
+            }
+            isBeet -= 1;
+
+            continue;
+        }
+
         for (int i = 0; i < data->size; i++)
         {
             if (i != data->rank)
@@ -47,7 +70,22 @@ void *listener_function(void *arg)
 
                     if (strncmp(message_recv.message, "REQUEST", 7) == 0)
                     {
-                        requesters.push_back(std::make_tuple(i, message_recv.clock));
+                        bool found = false;
+
+                        // Check if the rank 'i' already exists in the requesters list
+                        for (auto& requester : requesters) {
+                            if (std::get<0>(requester) == i) {
+                                // Update the clock if the rank exists
+                                std::get<1>(requester) = message_recv.clock;
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        // If rank 'i' was not found, add a new tuple
+                        if (!found) {
+                            requesters.push_back(std::make_tuple(i, message_recv.clock));
+                        }
 
                         if (enter_cs)
                         {
@@ -86,13 +124,13 @@ void *listener_function(void *arg)
                         }
                         else
                         {
-                            int request_clock = *(data->request_clock);
+                            int r_clock = *(data->request_clock);
                             bool want = *(data->want_enter_cs);
-                            if (!want || request_clock == 0)
+                            if (!want || r_clock == 0)
                             {
                                 send(data, i, "ACK");
                             }
-                            else if (message_recv.clock < request_clock || (message_recv.clock == request_clock && i < data->rank))
+                            else if (message_recv.clock < r_clock || (message_recv.clock == r_clock && i < data->rank))
                             {
                                 send(data, i, "ACK");
                             }
@@ -105,6 +143,7 @@ void *listener_function(void *arg)
                         if (accept_send && accept_send_id == i)
                         {
                             accept_send = false;
+                            std::cout << "[" << *(data->logical_clock) << "] P_" << data->rank << " wychodzi bo " << accept_send_id << " wyslal ACK" << std::endl;
                         }
 
                         if (std::find(received_replays.begin(), received_replays.end(), i) == received_replays.end())
@@ -179,6 +218,12 @@ void *listener_function(void *arg)
                             send(data, i, "ACCEPT");
                             accept_send = true;
                             accept_send_id = i;
+
+                            int random_val = generateRandomNumber(1, 10);
+
+                            if(random_val < 3) {
+                                isBeet = generateRandomNumber(300, 2000);
+                            }
                         }
                         else
                         {
@@ -187,10 +232,11 @@ void *listener_function(void *arg)
                     }
                     if (strncmp(message_recv.message, "ACCEPT", 6) == 0)
                     {
+                        partner = i;
                         trip_squat.push_back(i);
                         if (trip_squat.size() == (data->group_size - 1))
                         {
-
+                            sleep(3);
                             enter_cs = false;
 
                             pthread_mutex_lock(data->mutex);
@@ -198,7 +244,7 @@ void *listener_function(void *arg)
                             pthread_mutex_unlock(data->mutex);
 
                             send_to_all(data, "ACK", *(data->logical_clock));
-
+                            printf("Wyszedlem %d z %d \n", data -> rank, partner);
                             trip_processed = true;
                         }
                         else
@@ -208,6 +254,7 @@ void *listener_function(void *arg)
 
                         if (trip_processed)
                         {
+
                             received_replays.clear();
                             requesters.clear();
                             trip_squat.clear();
@@ -258,3 +305,4 @@ void update_local_clock(thread_data_t *data, int received_clock)
     }
     pthread_mutex_unlock(data->mutex);
 }
+

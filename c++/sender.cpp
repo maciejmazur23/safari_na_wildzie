@@ -18,7 +18,7 @@ void* sender_function(void* arg) {
         *(data->want_enter_cs) = true;
         pthread_mutex_unlock(data->mutex);
 
-        int request_clock = *(data->request_clock);
+        int request_clock = *(data->logical_clock);
         pthread_mutex_lock(data->mutex);
         *(data->request_clock) = (request_clock + 1);
         pthread_mutex_unlock(data->mutex);
